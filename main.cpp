@@ -3,6 +3,7 @@
 #include <cstdio> // perror
 #include <unistd.h> // close
 #include <netinet/in.h>
+#include <string.h>
 
 
 int main () {
@@ -31,22 +32,29 @@ int main () {
         return -1;
     }
     
-    sockaddr_in clientSockAddr = {0};
-    socklen_t clientSize = sizeof(clientSockAddr);    
-    int acceptFileDescriptor = accept(sockedFileDescriptor, (sockaddr *)&clientSockAddr, &clientSize);
-    if (acceptFileDescriptor == -1) {
-        perror("Accept Failed");
-        return -1;
+    while (1) {
+        sockaddr_in clientSockAddr = {0};
+        socklen_t clientSize = sizeof(clientSockAddr);    
+        int acceptFileDescriptor = accept(sockedFileDescriptor, (sockaddr *)&clientSockAddr, &clientSize);
+        if (acceptFileDescriptor == -1) {
+            perror("Accept Failed");
+            return -1;
+        }
+    
+        char buffer[4096] = {0};
+        size_t bytesRead = read(acceptFileDescriptor, buffer, 4096);
+        if (bytesRead == -1) {
+            perror("Read Failed/Device Disconnected");
+            return -1;
+        }
+    
+        const char *response = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nHelooo\r\n";
+        write(acceptFileDescriptor, response, strlen(response));
+        
+        std::cout << buffer << std::endl;
+        
+        close(acceptFileDescriptor);
     }
-
-    char buffer[4096];
-    size_t bytesRead = read(acceptFileDescriptor, buffer, 4096);
-    if (bytesRead == -1) {
-        perror("Read Failed/Device Disconnected");
-        return -1;
-    }
-
-    std::cout << buffer << std::endl;
 
     close(sockedFileDescriptor);
 
