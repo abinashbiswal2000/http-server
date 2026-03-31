@@ -1,4 +1,4 @@
-# Basic C++ HTTP Server
+# HTTP Server in C++
 
 A minimal, single-threaded HTTP server written in C++ using POSIX sockets. This project serves as a foundational learning exercise in network programming, demonstrating the basic lifecycle of a TCP connection and the fundamentals of the HTTP protocol.
 
