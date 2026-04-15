@@ -1,62 +1,92 @@
 #include <iostream>
-#include <sys/socket.h> // socket
-#include <cstdio> // perror
-#include <unistd.h> // close
+#include <sys/socket.h>
 #include <netinet/in.h>
-#include <string.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <cstring>
 
+void * handleClientFunction (void *clientFdPtr) {
+    
+    int clientFd = *((int *)clientFdPtr);
+    free(clientFdPtr);
+
+    char buffer[4096] = {0};
+    
+    ssize_t bytesRead = read(clientFd, buffer, sizeof(buffer) - 1);
+    if (bytesRead < 0) {
+        perror("Read Failed");
+    } else if (bytesRead > 0){
+        buffer[bytesRead] = '\0';
+        std::cout << "Request Received\n" << buffer << std::endl;
+    }
+
+    const char *buf =   "HTTP/1.1 200 OK\r\n"
+                        "Content-Length: 19\r\n"
+                        "\r\n"
+                        "Hello from server!\n";    
+
+    write(clientFd, buf, strlen(buf));
+    
+    close(clientFd);
+
+    return NULL;
+}
 
 int main () {
-    
-    int sockedFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockedFileDescriptor == -1) {
-        perror("Socket Failed"); // perror("My Message with the meaning of the errno and not the number or errno itself.")
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("Socket Failed");
         return -1;
     }
 
-    sockaddr_in s = {0};
-    s.sin_family = AF_INET;
-    s.sin_port = htons(9999);
-    s.sin_addr.s_addr = INADDR_ANY;
+    sockaddr_in server = {0};
+    server.sin_port = htons(9999);
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_family = AF_INET;
 
-    int b = bind(sockedFileDescriptor, (sockaddr *)&s, sizeof(s));
+    int b = bind(sfd, (sockaddr *)&server, sizeof(server));
     if (b == -1) {
         perror("Bind Failed");
         return -1;
     }
-    
-    int backLogSize = 3;
-    int l = listen(sockedFileDescriptor, backLogSize);
+
+    int queueSize = 20;
+    int l = listen(sfd, queueSize);
     if (l == -1) {
         perror("Listen Failed");
         return -1;
     }
-    
+
+    std::cout << "Server Listening at port 9999" << std::endl;
+
     while (1) {
-        sockaddr_in clientSockAddr = {0};
-        socklen_t clientSize = sizeof(clientSockAddr);    
-        int acceptFileDescriptor = accept(sockedFileDescriptor, (sockaddr *)&clientSockAddr, &clientSize);
-        if (acceptFileDescriptor == -1) {
+
+        sockaddr_in client = {0};
+        socklen_t clientSize = sizeof(client);
+        int clientFd = accept(sfd, (sockaddr *)&client, &clientSize);
+        if (clientFd == -1) {
             perror("Accept Failed");
-            return -1;
+            continue;
         }
-    
-        char buffer[4096] = {0};
-        size_t bytesRead = read(acceptFileDescriptor, buffer, 4096);
-        if (bytesRead == -1) {
-            perror("Read Failed/Device Disconnected");
-            return -1;
+
+        pthread_t threadId;
+
+        int *clientFdCopyPtr = (int *)malloc(sizeof(int));
+        *clientFdCopyPtr = clientFd;
+
+        int p = pthread_create(&threadId, NULL, handleClientFunction, (void *)clientFdCopyPtr);
+        if (p != 0) {
+            perror("Thread Creation Failed");
+            free(clientFdCopyPtr);
+            close(clientFd);
+            continue;
         }
-    
-        const char *response = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nHelooo\r\n";
-        write(acceptFileDescriptor, response, strlen(response));
-        
-        std::cout << buffer << std::endl;
-        
-        close(acceptFileDescriptor);
+
+        pthread_detach(threadId);
+
     }
 
-    close(sockedFileDescriptor);
+    close(sfd);
 
     return 0;
 }
